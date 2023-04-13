@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Ввод данных</title>
+    </head>
+    <body>
+        <h2>Ввод данных</h2>
+        <form method="POST" name="parameters"> <!-- action="postform" -->
+            <label>Limits</label><br>
+            <input type="number" name="limits" /><br><br>
+            <label>Threads</label><br>
+            <input type="number" name="threads" /><br><br>
+            <input id="elem" type="button" value="Отправить" />
+        </form>
+        <script>
+            function requestSender() {
+                // заполним FormData данными из формы
+                let formData = new FormData(document.forms.parameters);
+                let formJSON = {};
+                formData.forEach((value, key) => formJSON[key.toLowerCase()] = parseInt(value));
+                let json = JSON.stringify(formJSON);
+                // отправим параметры
+                let xhr = new XMLHttpRequest();
+                xhr.open("POST", "/pushParams", false);
+                xhr.send(json);
+                // получим числа
+                xhr.open("GET", "/getNumbers", false);
+                xhr.send()
+                let div = document.createElement('div')
+                div.textContent = xhr.responseText
+                document.body.append(div)
+                console.log(xhr.responseText)
+            };
+            elem.addEventListener("click", requestSender);
+        </script>
+    </body>
+</html>
