@@ -9,7 +9,6 @@ import (
     "time"
     "io/ioutil"
     "net/http"
-    "strconv"
 )
 
 // Срез каналов для прослушки чекером
@@ -70,27 +69,17 @@ func getNumbers(limits, threads int) []int {
 // посылка с параметрами
 type parameters struct {
     Limits, Threads int
+    Correct bool
 }
  
-func validator(limitsStr, threadsStr string) (parameters, error) {
-    var params parameters
-    limits, err := strconv.Atoi(limitsStr)
-    if err != nil {
-        return params, err
+func validator(params parameters) error {
+    if params.Limits <= 0 {
+        return errors.New("invalid value for limits")
     }
-    if limits <= 0 {
-        return params, errors.New("invalid value for limits")
+    if params.Threads <= 0 {
+        return errors.New("invalid value for threads")
     }
-    threads, err := strconv.Atoi(threadsStr)
-    if err != nil {
-        return params, err
-    }
-    if threads <= 0 {
-        return params, errors.New("invalid value for threads")
-    }
-    params.Limits = limits
-    params.Threads = threads
-    return params, nil
+    return nil
 }
  
 func main() {
@@ -109,12 +98,19 @@ func main() {
             if err != nil {
                 fmt.Fprintln(w, "error: ", err)
             }
+            err = validator(params)
+            if err != nil {
+                fmt.Fprintln(w, "error: ", err)
+                params.Correct = false
+            } else {
+                params.Correct = true
+            }
             // debug
             // fmt.Println(params)
         }
     })
 	http.HandleFunc("/getNumbers", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
+		if r.Method == http.MethodGet && params.Correct {
             fmt.Fprintln(w, getNumbers(params.Limits, params.Threads))
 		}
 	})
