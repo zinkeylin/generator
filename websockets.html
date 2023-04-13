@@ -1,0 +1,41 @@
+<!-- websockets.html -->
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Ввод данных</title>
+    </head>
+    <body>
+        <h2>Ввод данных</h2>
+        <form name="parameters">
+            <label>Limits</label><br>
+            <input type="number" name="limits" /><br><br>
+            <label>Threads</label><br>
+            <input type="number" name="threads" /><br><br>
+        </form>
+        <button onclick="send()">Send</button>
+        <pre id="output"></pre>
+        <script>
+            var limits = document.getElementsByName("limits");
+            var threads = document.getElementsByName("threads");
+            var output = document.getElementById("output");
+            var socket = new WebSocket("ws://localhost:8080/echo");
+
+            socket.onopen = function () {
+                output.innerHTML += "Status: Connected\n";
+            };
+
+            socket.onmessage = function (e) {
+                output.innerHTML = "Server: " + e.data + "\n";
+            };
+
+            function send() {
+                let formData = new FormData(document.forms.parameters);
+                let formJSON = {};
+                formData.forEach((value, key) => formJSON[key.toLowerCase()] = parseInt(value));
+                let json = JSON.stringify(formJSON);
+                socket.send(json);
+            }
+        </script>
+    </body>
+</html>
