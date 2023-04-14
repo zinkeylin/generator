@@ -8,64 +8,46 @@ import (
 	"github.com/gorilla/websocket"
 	"math/rand"
 	"net/http"
-	"sync"
+	"strconv"
 	"time"
-	"strings"
 )
 
 // Срез каналов для прослушки чекером
 var chans = []chan int{}
+
+// Флаг-статус генерации, для остановки пушеров
+var neededPush = false
 
 // пушер, генерирующий рандомное число в свой канал
 func pusher(c chan<- int, limits int) {
 	source := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(source)
 	for {
+		if !neededPush {
+			break
+		}
 		c <- r.Intn(limits + 1)
 	}
 }
 
-// чекер, проверяющий уникальность чисел, кладёт уникальные в numbers
-func checker(limits int, numbers *[]int) {
+// проверяет уникальность чисел, кладёт уникальные в канал
+func getNumber(out chan int) {
 	uniqueChecker := make(map[int]bool)
 	for {
+		if len(chans) == 0 {
+			break
+		}
 		// прослушка каждого канала
 		for _, c := range chans {
-			select {
-			case num := <-c:
-				{
-					if !uniqueChecker[num] {
-						uniqueChecker[num] = true
-						*numbers = append(*numbers, num)
-						limits--
-						if limits == 0 {
-							return
-						}
-					}
+			num, ok := <-c
+			if ok {
+				if !uniqueChecker[num] {
+					uniqueChecker[num] = true
+					out <- num
 				}
 			}
 		}
 	}
-}
-
-func getNumbers(limits, threads int) []int {
-	// запуск threads сендеров
-	for i := 0; i < threads; i++ {
-		curr := make(chan int)
-		chans = append(chans, curr)
-		go pusher(curr, limits)
-	}
-
-	// получаем числа из чекера
-	var numbers []int
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		checker(limits, &numbers)
-	}()
-	wg.Wait()
-	return numbers
 }
 
 // посылка с параметрами
@@ -89,39 +71,37 @@ func validator(params parameters) error {
 	return nil
 }
 
-func arrayToString(a []int, delim string) string {
-    return strings.Trim(strings.Replace(fmt.Sprint(a), " ", delim, -1), "[]")
-}
-
 func main() {
 	var params parameters
 	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
 		conn, _ := upgrader.Upgrade(w, r, nil) // error ignored for sake of simplicity
 
 		for {
-			// Read message from browser
-			msgType, bs, err := conn.ReadMessage()
+			// обрабатываем сообщение от клиента
+			_, bs, err := conn.ReadMessage()
 			if err != nil {
 				fmt.Println("error: ", err)
-				err = conn.WriteMessage(msgType, []byte(string(err.Error())))
+				err = conn.WriteMessage(websocket.TextMessage, []byte(string(err.Error())))
 				if err != nil {
 					fmt.Println("Connection error: ", err)
 				}
 			}
+			// обрабатываем параметры
 			err = json.Unmarshal(bs, &params)
 			if err != nil {
 				fmt.Println("error: ", err)
-				err = conn.WriteMessage(msgType, []byte(string(err.Error())))
+				err = conn.WriteMessage(websocket.TextMessage, []byte(string(err.Error())))
 				if err != nil {
 					fmt.Println("Connection error: ", err)
 				}
 				params.Correct = false
 
 			}
+			// проверка корректности
 			err = validator(params)
 			if err != nil {
 				fmt.Println("error: ", err)
-				err = conn.WriteMessage(msgType, []byte(string(err.Error())))
+				err = conn.WriteMessage(websocket.TextMessage, []byte(string(err.Error())))
 				if err != nil {
 					fmt.Println("Connection error: ", err)
 				}
@@ -129,23 +109,43 @@ func main() {
 			} else {
 				params.Correct = true
 			}
-			
+
 			if params.Correct {
-				err = conn.WriteMessage(msgType, []byte("\n" + arrayToString(getNumbers(params.Limits, params.Threads), "\n")))
-				if err != nil {
-					fmt.Println("error: ", err)
-					err = conn.WriteMessage(msgType, []byte(string(err.Error())))
+				// разрешаем пушить числа
+				neededPush = true
+				// запуск threads пушеров
+				for i := 0; i < params.Threads; i++ {
+					curr := make(chan int)
+					chans = append(chans, curr)
+					go pusher(curr, params.Limits)
+				}
+				// Канал для приёма чисел
+				out := make(chan int)
+				// запуск геттера (чекера уникальности)
+				go getNumber(out)
+				for i := 0; i < params.Limits; i++ {
+					num := <-out
+					err = conn.WriteMessage(websocket.TextMessage, []byte(strconv.Itoa(num)))
 					if err != nil {
-						fmt.Println("Connection error: ", err)
+						fmt.Println("error: ", err)
+						err = conn.WriteMessage(websocket.TextMessage, []byte(string(err.Error())))
+						if err != nil {
+							fmt.Println("Connection error: ", err)
+						}
 					}
 				}
+				// очищаем срез каналов
+				chans = []chan int{}
+				// запрещаем пушить числа
+				neededPush = false
 			}
 		}
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "websockets.html")
+		http.ServeFile(w, r, "html/index.html")
 	})
 
-	http.ListenAndServe(":8080", nil)
+	fmt.Println("Server is listening...\nlink:http://localhost:8080")
+	http.ListenAndServe("localhost:8080", nil)
 }
