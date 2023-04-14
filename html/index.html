@@ -14,25 +14,38 @@
             <input id="elem" type="button" value="Отправить" />
         </form>
         <script>
+            let div = document.createElement('div')
+            document.body.append(div)
             function requestSender() {
                 // заполним FormData данными из формы
-                let formData = new FormData(document.forms.parameters);
-                let formJSON = {};
-                formData.forEach((value, key) => formJSON[key.toLowerCase()] = parseInt(value));
-                let json = JSON.stringify(formJSON);
+                let formData = new FormData(document.forms.parameters)
+                let formJSON = {}
+                formData.forEach((value, key) => formJSON[key.toLowerCase()] = parseInt(value))
+                let json = JSON.stringify(formJSON)
                 // отправим параметры
-                let xhr = new XMLHttpRequest();
-                xhr.open("POST", "/pushParams", false);
-                xhr.send(json);
-                // получим числа
-                xhr.open("GET", "/getNumbers", false);
-                xhr.send()
-                let div = document.createElement('div')
-                div.textContent = xhr.responseText
-                document.body.append(div)
-                console.log(xhr.responseText)
+                let xhr = new XMLHttpRequest()
+                xhr.open("POST", "/pushParams")
+                xhr.send(json)
+                xhr.onload = function() {
+                    if (xhr.status != 200 || xhr.responseText.startsWith("error")) {
+                        alert(`Ошибка ${xhr.status}: ${xhr.statusText}\n${xhr.responseText}`)
+                    } else {
+                        let getXhr = new XMLHttpRequest()
+                        // получим числа
+                        getXhr.open("GET", "/getNumbers")
+                        getXhr.send()
+                        getXhr.onload = function() {
+                            if (getXhr.status != 200 || getXhr.responseText.startsWith("error")) {
+                                alert(`Ошибка ${getXhr.status}: ${getXhr.statusText}`)
+                            } else {
+                                div.textContent = getXhr.responseText
+                                console.log(getXhr.responseText)
+                            }
+                        }
+                    }
+                }
             };
-            elem.addEventListener("click", requestSender);
+            elem.addEventListener("click", requestSender)
         </script>
     </body>
 </html>
